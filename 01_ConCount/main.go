@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	iterations = 100000000
+	iterations = 10000000
 )
 
 var sync bool
