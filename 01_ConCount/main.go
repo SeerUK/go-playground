@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	iterations = 1000000000
+	iterations = 100000000
 )
 
 var sync bool
@@ -39,9 +39,9 @@ func main() {
 		end := (c + 1) * size
 
 		if sync {
-			chs = append(chs, salg(in[start:end]))
+			chs = append(chs, sumSync(sqSync(in[start:end])))
 		} else {
-			chs = append(chs, aalg(in[start:end]))
+			chs = append(chs, sumAsync(sqAsync(in[start:end])))
 		}
 	}
 
@@ -56,7 +56,7 @@ func main() {
 	fmt.Println(total)
 }
 
-func salg(is []int) <-chan int {
+func sqSync(is []int) <-chan int {
 	out := make(chan int, len(is))
 	for i := range is {
 		out <- i * i
@@ -65,7 +65,21 @@ func salg(is []int) <-chan int {
 	return out
 }
 
-func aalg(is []int) <-chan int {
+func sumSync(in <-chan int) <-chan int {
+	var total int
+
+	for i := range in {
+		total += i
+	}
+
+	out := make(chan int, 1)
+	out <- total
+	close(out)
+
+	return out
+}
+
+func sqAsync(is []int) <-chan int {
 	out := make(chan int, len(is))
 	go func() {
 		for i := range is {
@@ -73,5 +87,22 @@ func aalg(is []int) <-chan int {
 		}
 		close(out)
 	}()
+	return out
+}
+
+func sumAsync(in <-chan int) <-chan int {
+	var total int
+
+	out := make(chan int, 1)
+
+	go func() {
+		for i := range in {
+			total += i
+		}
+
+		out <- total
+		close(out)
+	}()
+
 	return out
 }
