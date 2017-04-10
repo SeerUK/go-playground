@@ -3,33 +3,35 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math"
 	"runtime"
 )
 
 const (
-	iterations = 10000000
+	iterations = 20000000
 )
 
-var sync bool
+var (
+	cores int
+	sync  bool
+)
 
 func main() {
+	flag.IntVar(&cores, "cores", runtime.GOMAXPROCS(0), "Number of CPU cores to use")
 	flag.BoolVar(&sync, "sync", false, "Use synchronous computing?")
 	flag.Parse()
 
-	cpus := runtime.GOMAXPROCS(0)
+	cpus := runtime.GOMAXPROCS(cores)
 	size := iterations / cpus
 
-	fmt.Println("Max int64: ", math.MaxInt64)
-	fmt.Println("CPU Count: ", cpus)
-	fmt.Println("Synchronous?: ", sync)
+	fmt.Println("CPUs: ", cores)
+	fmt.Println("Sync: ", sync)
 
-	var in [iterations]int
+	var is [iterations]int
 	var total int
 
 	// Fill array of values to square
 	for i := 0; i < iterations; i++ {
-		in[i] = i + 1
+		is[i] = i + 1
 	}
 
 	var chs []<-chan int
@@ -38,14 +40,15 @@ func main() {
 		start := c * size
 		end := (c + 1) * size
 
+		// @todo: Could we split this asynchronously too?
+		ch := atoc(is[start:end])
+
 		if sync {
-			chs = append(chs, sumSync(sqSync(in[start:end])))
+			chs = append(chs, sumSync(sqSync(ch)))
 		} else {
-			chs = append(chs, sumAsync(sqAsync(in[start:end])))
+			chs = append(chs, sumAsync(sqAsync(ch)))
 		}
 	}
-
-	fmt.Println("Channels: ", len(chs))
 
 	for _, ch := range chs {
 		for n := range ch {
@@ -56,12 +59,28 @@ func main() {
 	fmt.Println(total)
 }
 
-func sqSync(is []int) <-chan int {
+// atoc takes an array (of ints in this case), and converts it to a read-only channel of ints.
+func atoc(is []int) <-chan int {
 	out := make(chan int, len(is))
+
 	for i := range is {
+		out <- i
+	}
+
+	close(out)
+
+	return out
+}
+
+func sqSync(in <-chan int) <-chan int {
+	out := make(chan int, len(in))
+
+	for i := range in {
 		out <- i * i
 	}
+
 	close(out)
+
 	return out
 }
 
@@ -79,14 +98,17 @@ func sumSync(in <-chan int) <-chan int {
 	return out
 }
 
-func sqAsync(is []int) <-chan int {
-	out := make(chan int, len(is))
+func sqAsync(in <-chan int) <-chan int {
+	out := make(chan int, len(in))
+
 	go func() {
-		for i := range is {
+		for i := range in {
 			out <- i * i
 		}
+
 		close(out)
 	}()
+
 	return out
 }
 
