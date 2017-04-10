@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	iterations = 20000000
+	iterations = 50000000
 )
 
 var (
@@ -34,40 +34,46 @@ func main() {
 		is[i] = i + 1
 	}
 
-	var chs []<-chan int
+	var ichs []<-chan int
+	var ochs []<-chan int
 
 	for c := 0; c < cpus; c++ {
 		start := c * size
 		end := (c + 1) * size
 
-		// @todo: Could we split this asynchronously too?
-		ch := atoc(is[start:end])
+		// @todo: Could we split this asynchronously too? Maybe have two arrays of channels? This
+		// loop creates the "input" channels, and then we have another loop to loop over that to
+		// produce the output channels which contain the results ready to be summed?
+		ichs = append(ichs, atoc(is[start:end]))
+	}
 
+	for _, ich := range ichs {
 		if sync {
-			chs = append(chs, sumSync(sqSync(ch)))
+			ochs = append(ochs, sumSync(sqSync(ich)))
 		} else {
-			chs = append(chs, sumAsync(sqAsync(ch)))
+			ochs = append(ochs, sumAsync(sqAsync(ich)))
 		}
 	}
 
-	for _, ch := range chs {
+	for _, ch := range ochs {
 		for n := range ch {
 			total += n
 		}
 	}
 
-	fmt.Println(total)
+	fmt.Printf("\nResult: %d\n", total)
 }
 
 // atoc takes an array (of ints in this case), and converts it to a read-only channel of ints.
 func atoc(is []int) <-chan int {
 	out := make(chan int, len(is))
 
-	for i := range is {
-		out <- i
-	}
-
-	close(out)
+	go func() {
+		for i := range is {
+			out <- i
+		}
+		close(out)
+	}()
 
 	return out
 }
