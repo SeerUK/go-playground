@@ -8,6 +8,7 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"time"
 )
 
 var rawData = `{
@@ -23,18 +24,25 @@ var rawData = `{
 	}
 }`
 
+type ContentData map[string]interface{}
+
 type ContentEntry struct {
-	Type string                 `json:"type"`
-	Data map[string]interface{} `json:"data"`
+	Type string      `json:"type"`
+	Data ContentData `json:"data"`
 }
 
-func AssertJSONObject(o interface{}) (map[string]interface{}, bool) {
-	r, ok := o.(map[string]interface{})
-
-	return r, ok
+func TemplateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"IsEqual": func(a, b interface{}) bool {
+			return reflect.DeepEqual(a, b)
+		},
+	}
 }
 
 func main() {
+	start := time.Now()
+
+	entries := []ContentEntry{}
 	entry := ContentEntry{}
 
 	err := json.Unmarshal([]byte(rawData), &entry)
@@ -42,17 +50,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	funcs := template.FuncMap{
-		"IsEqual": func(a, b interface{}) bool {
-			return reflect.DeepEqual(a, b)
-		},
-	}
-
-	if a, ok := AssertJSONObject(entry.Data); ok {
-		if b, ok := AssertJSONObject(a["bar"]); ok {
-			fmt.Println(b["message"])
-		}
-	}
+	entries = append(entries, entry)
+	entries = append(entries, entry)
 
 	tmpl := strings.TrimSpace(`
 {{if IsEqual .foo "This is a foo"}}Foo {{.foo}}{{end}}
@@ -60,9 +59,21 @@ func main() {
 	`)
 
 	b := bytes.NewBuffer([]byte{})
+	t := template.Must(template.New("article").Funcs(TemplateFuncs()).Parse(tmpl))
 
-	t := template.Must(template.New("test").Funcs(funcs).Parse(tmpl))
-	t.Execute(b, entry)
+	for _, e := range entries {
+		for _, et := range t.Templates() {
+			if et.Name() != e.Type {
+				continue
+			}
+
+			err := et.Execute(b, entry.Data)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 
 	fmt.Println(b.String())
+	fmt.Println(time.Since(start))
 }
